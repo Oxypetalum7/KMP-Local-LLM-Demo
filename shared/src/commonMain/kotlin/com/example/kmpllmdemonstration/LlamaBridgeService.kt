@@ -29,6 +29,7 @@ class LlamaBridgeService {
                 }
 
                 override fun onComplete() {
+                    trySend(GenTextState.Complete(textBuffer.toString()).rightIor())
                     close()
                 }
 
