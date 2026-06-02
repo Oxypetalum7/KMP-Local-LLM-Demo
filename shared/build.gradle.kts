@@ -33,6 +33,8 @@ kotlin {
             implementation(libs.llamatik)
             implementation(libs.koin.core)
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.arrow.core)
+            implementation(libs.arrow.fx.coroutines)
         }
         androidMain.dependencies {
             implementation(libs.koin.android)
