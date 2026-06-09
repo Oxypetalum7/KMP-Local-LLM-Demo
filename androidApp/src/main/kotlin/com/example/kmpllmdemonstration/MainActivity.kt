@@ -6,11 +6,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.tooling.preview.Preview
 import com.example.kmpllmdemonstration.di.commonModule
+import com.example.kmpllmdemonstration.di.platformModule
 import com.example.kmpllmdemonstration.navigation.AppNavGraph
+import org.koin.android.ext.koin.androidContext
 import org.koin.compose.KoinApplication
+import org.koin.core.KoinApplication
 import org.koin.dsl.koinConfiguration
 
 class MainActivity : ComponentActivity() {
@@ -18,29 +19,21 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
-            LlmDemoApp()
+            KoinApplication(
+                configuration = koinConfiguration(
+                    declaration = {
+                        androidContext(this@MainActivity)
+                        modules(platformModule, commonModule)
+                    }
+                ),
+                content = {
+                    MaterialTheme {
+                        Surface {
+                            AppNavGraph()
+                        }
+                    }
+                }
+            )
         }
     }
-}
-
-@Composable
-fun LlmDemoApp() {
-    KoinApplication(
-        configuration = koinConfiguration(
-            declaration = { modules(commonModule) }
-        ),
-        content = {
-            MaterialTheme {
-                Surface {
-                    AppNavGraph()
-                }
-            }
-        }
-    )
-}
-
-@Preview
-@Composable
-fun LlmDemoAppPreview() {
-    LlmDemoApp()
 }

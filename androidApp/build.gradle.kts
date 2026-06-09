@@ -20,6 +20,7 @@ dependencies {
     implementation(libs.koin.android)
     implementation(libs.koin.compose)
     implementation(libs.koin.compose.viewmodel)
+    implementation(libs.androidx.lifecycle.runtimeCompose)
 
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
