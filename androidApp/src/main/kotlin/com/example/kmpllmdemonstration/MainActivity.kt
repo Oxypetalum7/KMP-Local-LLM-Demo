@@ -13,6 +13,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import com.example.kmpllmdemonstration.di.commonModule
+import org.koin.compose.KoinApplication
+import org.koin.dsl.koinConfiguration
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -26,13 +29,20 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun LlmDemoApp() {
-    MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(text = "Local LLM Demo")
+    KoinApplication(
+        configuration = koinConfiguration(
+            declaration = { modules(commonModule) }
+        ),
+        content = {
+            MaterialTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(text = "Local LLM Demo")
+                    }
+                }
             }
         }
-    }
+    )
 }
 
 @Preview
