@@ -11,9 +11,9 @@ import com.example.kmpllmdemonstration.ui.screen.MainScreen
 fun AppNavGraph(navController: NavHostController = rememberNavController()) {
     NavHost(
         navController = navController,
-        startDestination = Screen.Main.route
+        startDestination = Screen.Main
     ) {
-        composable(Screen.Main.route) {
+        composable<Screen.Main> {
             MainScreen()
         }
     }
