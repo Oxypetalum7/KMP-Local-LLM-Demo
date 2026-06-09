@@ -32,9 +32,11 @@ kotlin {
         commonMain.dependencies {
             implementation(libs.llamatik)
             implementation(libs.koin.core)
+            implementation(libs.koin.core.viewmodel)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.arrow.core)
             implementation(libs.arrow.fx.coroutines)
+            implementation(libs.androidx.lifecycle.viewmodel)
         }
         androidMain.dependencies {
             implementation(libs.koin.android)
