@@ -7,10 +7,10 @@ sealed class LlamaModel(
     val sizeLabel: String,
 ) {
     data object Gemma4E4BQ2 : LlamaModel(
-        fileName = "gemma-4-E2B_q4_0-it.gguf",
-        displayName = "Gemma 4 E4B",
-        downloadUrl = "https://huggingface.co/google/gemma-4-E2B-it-qat-q4_0-gguf/resolve/main/gemma-4-E2B_q4_0-it.gguf",
-        sizeLabel = "3.2 GB",
+        fileName = "google_gemma-4-E2B-it-Q4_K_S.gguf",
+        displayName = "Gemma 4 E2B (Q4_K_S)",
+        downloadUrl = "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q4_K_S.gguf",
+        sizeLabel = "3.15 GB",
     )
 
     companion object {
