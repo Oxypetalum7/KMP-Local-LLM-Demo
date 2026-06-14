@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import arrow.core.Option
 import arrow.core.none
 import arrow.core.some
+import com.example.kmpllmdemonstration.GenTextState
 import com.example.kmpllmdemonstration.LlamaBridgeService
 import com.example.kmpllmdemonstration.model.DownloadProgress
 import com.example.kmpllmdemonstration.model.LlamaModel
@@ -34,7 +35,20 @@ class MainViewModel(
     private val _gpuEnabled = MutableStateFlow(false)
     val gpuEnabled: StateFlow<Boolean> = _gpuEnabled.asStateFlow()
 
-    private var generateJob : Option<Job> = none()
+    private val _isGenerating = MutableStateFlow(false)
+    val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
+
+    private var generateJob: Option<Job> = none()
+
+    init {
+        // アプリ再起動後にキャッシュ済みモデルを自動検出してロードする
+        viewModelScope.launch {
+            val model = LlamaModel.all.firstOrNull() ?: return@launch
+            if (modelFileProvider.exists(model.fileName)) {
+                initModel(model, modelFileProvider.getFilePath(model.fileName))
+            }
+        }
+    }
 
     fun toggleGpu(enabled: Boolean) {
         _gpuEnabled.value = enabled
@@ -67,8 +81,12 @@ class MainViewModel(
         _modelState.value = ModelState.Initializing
         withContext(Dispatchers.Default) {
             val ok = llamaBridgeService.initModel(path)
-            _modelState.value = if (ok) ModelState.Ready(model)
-            else ModelState.Error("モデルの初期化に失敗しました")
+            if (ok) {
+                llamaBridgeService.updateParams(gpuEnabled = _gpuEnabled.value)
+                _modelState.value = ModelState.Ready(model)
+            } else {
+                _modelState.value = ModelState.Error("モデルの初期化に失敗しました")
+            }
         }
     }
 
@@ -84,17 +102,29 @@ class MainViewModel(
             // キャンセル由来のエラー状態をリセット
             _modelState.value = ModelState.Ready(currentModel)
             _generatedText.value = ""
+            _isGenerating.value = true
 
             generateJob = launch {
                 withContext(Dispatchers.Default) {
                     llamaBridgeService.generateText(prompt).collect { result ->
                         result.fold(
-                            fa = { error -> _modelState.value = ModelState.Error(error.message) },
-                            fb = { state -> _generatedText.value = state.value },
-                            fab = { _, state -> _generatedText.value = state.value },
+                            fa = { error ->
+                                _modelState.value = ModelState.Error(error.message)
+                                _isGenerating.value = false
+                            },
+                            fb = { state ->
+                                _generatedText.value = state.value
+                                if (state is GenTextState.Complete) _isGenerating.value = false
+                            },
+                            fab = { _, state ->
+                                _generatedText.value = state.value
+                                if (state is GenTextState.Complete) _isGenerating.value = false
+                            },
                         )
                     }
                 }
+                // flow が正常終了したが Complete が来なかった場合（キャンセル等）のフォールバック
+                _isGenerating.value = false
             }.some()
         }
     }

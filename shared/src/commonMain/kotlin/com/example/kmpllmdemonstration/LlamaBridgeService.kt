@@ -19,9 +19,8 @@ class LlamaBridgeService {
     private var activeSession: LlamaSession? = null
 
     fun initModel(path: String): Boolean {
-        val resolvedPath = LlamaBridge.getModelPath(modelFileName = path)
-        val ok = LlamaBridge.initGenerateModel(resolvedPath)
-        if (ok) modelPath = resolvedPath
+        val ok = LlamaBridge.initGenerateModel(path)
+        if (ok) modelPath = path
         return ok
     }
 
