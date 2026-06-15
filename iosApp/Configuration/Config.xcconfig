@@ -1,4 +1,4 @@
-TEAM_ID=
+#include? "Local.xcconfig"
 
 PRODUCT_NAME=KMPLLMDemonstration
 PRODUCT_BUNDLE_IDENTIFIER=com.example.kmpllmdemonstration.KMPLLMDemonstration$(TEAM_ID)
