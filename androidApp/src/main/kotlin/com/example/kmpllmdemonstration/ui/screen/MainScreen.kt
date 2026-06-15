@@ -1,195 +1,164 @@
 package com.example.kmpllmdemonstration.ui.screen
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.Row
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.kmpllmdemonstration.model.LlamaModel
-import com.example.kmpllmdemonstration.model.ModelState
+import com.example.kmpllmdemonstration.ui.component.AppHeader
+import com.example.kmpllmdemonstration.ui.component.ChatDrawer
+import com.example.kmpllmdemonstration.ui.component.ChatInputBar
+import com.example.kmpllmdemonstration.ui.component.TurnItem
+import com.example.kmpllmdemonstration.ui.util.fadingEdgeBottom
+import com.example.kmpllmdemonstration.viewModel.ChatUiState
+import com.example.kmpllmdemonstration.viewModel.Effect
+import com.example.kmpllmdemonstration.viewModel.Intent
 import com.example.kmpllmdemonstration.viewModel.MainViewModel
+import com.example.kmpllmdemonstration.viewModel.ResponseState
+import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen() {
     val viewModel = koinViewModel<MainViewModel>()
-    val modelState by viewModel.modelState.collectAsStateWithLifecycle()
-    val generatedText by viewModel.generatedText.collectAsStateWithLifecycle()
-    val gpuEnabled by viewModel.gpuEnabled.collectAsStateWithLifecycle()
+val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
-    MainContent(
-        modelState = modelState,
-        generatedText = generatedText,
-        gpuEnabled = gpuEnabled,
-        onDownloadClick = { viewModel.downloadAndInit(LlamaModel.Gemma4E4BQ2) },
-        onGenerateClick = { viewModel.generate(it) },
-        onGpuToggle = { viewModel.toggleGpu(it) },
-    )
+    LaunchedEffect(state.isSidebarOpen) {
+        if (state.isSidebarOpen && !drawerState.isOpen) drawerState.open()
+        if (!state.isSidebarOpen && drawerState.isOpen) drawerState.close()
+    }
+    LaunchedEffect(drawerState.currentValue) {
+        val isOpen = drawerState.currentValue == DrawerValue.Open
+        if (isOpen != state.isSidebarOpen) {
+            viewModel.dispatch(Intent.Main.ToggleSidebar)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.effects.collect { effect ->
+            when (effect) {
+                is Effect.Main.ShowError -> {
+                    scope.launch { snackbarHostState.showSnackbar(effect.message) }
+                }
+            }
+        }
+    }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ChatDrawer(
+                gpuEnabled = state.gpuEnabled,
+                onToggleGpu = { viewModel.dispatch(Intent.Setting.ToggleGpu(it)) },
+            )
+        },
+    ) {
+        Scaffold(
+            topBar = {
+                AppHeader(
+                    state = state,
+                    onMenuTapped = { viewModel.dispatch(Intent.Main.ToggleSidebar) },
+                    onLogoTapped = { viewModel.dispatch(Intent.Main.LogoTapped) },
+                    onNewChatTapped = { viewModel.dispatch(Intent.Main.StartNewChat) },
+                )
+            },
+            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+            containerColor = MaterialTheme.colorScheme.background,
+        ) { paddingValues ->
+            ChatBody(
+                state = state,
+                paddingValues = paddingValues,
+                onInputChange = { viewModel.dispatch(Intent.Main.UpdateInput(it)) },
+                onSend = { viewModel.dispatch(Intent.Main.Send) },
+                onTogglePromptCollapse = {
+                    viewModel.dispatch(Intent.Main.TogglePromptCollapse(it))
+                },
+            )
+        }
+    }
 }
 
 @Composable
-private fun MainContent(
-    modelState: ModelState,
-    generatedText: String,
-    gpuEnabled: Boolean,
-    onDownloadClick: () -> Unit,
-    onGenerateClick: (String) -> Unit,
-    onGpuToggle: (Boolean) -> Unit,
+private fun ChatBody(
+    state: ChatUiState,
+    paddingValues: PaddingValues,
+    onInputChange: (String) -> Unit,
+    onSend: () -> Unit,
+    onTogglePromptCollapse: (String) -> Unit,
 ) {
+    val listState = rememberLazyListState()
+    val lastTurnId = state.turns.lastOrNull()?.id
+    val lastResponse = (state.turns.lastOrNull()?.response as? ResponseState.Generating)?.partial
+
+    LaunchedEffect(lastTurnId) {
+        if (state.turns.isNotEmpty()) {
+            listState.animateScrollToItem(state.turns.size - 1)
+        }
+    }
+    LaunchedEffect(lastResponse) {
+        if (state.turns.isNotEmpty()) {
+            listState.animateScrollToItem(state.turns.size - 1)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(paddingValues)
+            .imePadding(),
     ) {
-        Text(
-            text = "KMP LLM Demo",
-            style = MaterialTheme.typography.headlineSmall,
-        )
-
-        when (modelState) {
-            ModelState.Idle -> IdleSection(onDownloadClick)
-            is ModelState.Downloading -> DownloadingSection(modelState.progressPct)
-            ModelState.Initializing -> InitializingSection()
-            is ModelState.Ready -> ReadySection(
-                model = modelState.model,
-                generatedText = generatedText,
-                gpuEnabled = gpuEnabled,
-                onGenerateClick = onGenerateClick,
-                onGpuToggle = onGpuToggle,
-            )
-            is ModelState.Error -> ErrorSection(
-                message = modelState.message,
-                onRetry = onDownloadClick,
-            )
-        }
-    }
-}
-
-@Composable
-private fun IdleSection(onDownloadClick: () -> Unit) {
-    val model = LlamaModel.Gemma4E4BQ2
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(text = model.displayName, style = MaterialTheme.typography.bodyLarge)
-        Text(text = "サイズ: ${model.sizeLabel}", style = MaterialTheme.typography.bodyMedium)
-        Button(onClick = onDownloadClick, modifier = Modifier.fillMaxWidth()) {
-            Text("ダウンロードして読み込む")
-        }
-    }
-}
-
-@Composable
-private fun DownloadingSection(progressPct: Int) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("ダウンロード中... $progressPct%")
-        LinearProgressIndicator(
-            progress = { progressPct / 100f },
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-@Composable
-private fun InitializingSection() {
-    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
         ) {
-            CircularProgressIndicator()
-            Text("モデルを初期化中...")
-        }
-    }
-}
-
-@Composable
-private fun ReadySection(
-    model: LlamaModel,
-    generatedText: String,
-    gpuEnabled: Boolean,
-    onGenerateClick: (String) -> Unit,
-    onGpuToggle: (Boolean) -> Unit,
-) {
-    var prompt by rememberSaveable { mutableStateOf("自己紹介してください。") }
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = "${model.displayName} 準備完了",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = "GPU アクセラレーション",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Switch(
-                checked = gpuEnabled,
-                onCheckedChange = onGpuToggle,
-            )
-        }
-        OutlinedTextField(
-            value = prompt,
-            onValueChange = { prompt = it },
-            label = { Text("プロンプト") },
-            modifier = Modifier.fillMaxWidth(),
-            minLines = 2,
-        )
-        Button(
-            onClick = { onGenerateClick(prompt) },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("生成")
-        }
-        if (generatedText.isNotEmpty()) {
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = generatedText,
+            LazyColumn(
+                state = listState,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                style = MaterialTheme.typography.bodyMedium,
-            )
+                    .fillMaxSize()
+                    .fadingEdgeBottom(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            ) {
+                itemsIndexed(state.turns, key = { _, t -> t.id }) { index, turn ->
+                    TurnItem(
+                        turn = turn,
+                        showDivider = index < state.turns.size - 1,
+                        onTogglePromptCollapse = { onTogglePromptCollapse(turn.id) },
+                    )
+                }
+            }
         }
-    }
-}
-
-@Composable
-private fun ErrorSection(message: String, onRetry: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = "エラー: $message",
-            color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodyMedium,
+        ChatInputBar(
+            input = state.input,
+            enabled = state.isInputEnabled,
+            isSendVisible = state.isSendVisible,
+            onInputChange = onInputChange,
+            onSend = onSend,
         )
-        Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
-            Text("再試行")
-        }
     }
 }
