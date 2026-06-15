@@ -42,7 +42,7 @@ class MainViewModel(
 
     init {
         // アプリ再起動後にキャッシュ済みモデルを自動検出してロードする
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val model = LlamaModel.all.firstOrNull() ?: return@launch
             if (modelFileProvider.exists(model.fileName)) {
                 initModel(model, modelFileProvider.getFilePath(model.fileName))
@@ -105,26 +105,22 @@ class MainViewModel(
             _isGenerating.value = true
 
             generateJob = launch {
-                withContext(Dispatchers.Default) {
-                    llamaBridgeService.generateText(prompt).collect { result ->
-                        result.fold(
-                            fa = { error ->
+                try {
+                    withContext(Dispatchers.Default) {
+                        llamaBridgeService.generateText(prompt).collect { result ->
+                            // Ior の Left/Right/Both すべてで same handling
+                            result.leftOrNull()?.let { error ->
                                 _modelState.value = ModelState.Error(error.message)
-                                _isGenerating.value = false
-                            },
-                            fb = { state ->
+                            }
+                            result.getOrNull()?.let { state ->
                                 _generatedText.value = state.value
-                                if (state is GenTextState.Complete) _isGenerating.value = false
-                            },
-                            fab = { _, state ->
-                                _generatedText.value = state.value
-                                if (state is GenTextState.Complete) _isGenerating.value = false
-                            },
-                        )
+                            }
+                        }
                     }
+                } finally {
+                    // 正常完了・キャンセル・例外いずれの場合も生成中フラグを下ろす
+                    _isGenerating.value = false
                 }
-                // flow が正常終了したが Complete が来なかった場合（キャンセル等）のフォールバック
-                _isGenerating.value = false
             }.some()
         }
     }
