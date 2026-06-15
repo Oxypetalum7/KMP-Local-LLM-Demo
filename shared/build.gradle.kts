@@ -34,12 +34,18 @@ kotlin {
             implementation(libs.koin.core)
             implementation(libs.koin.core.viewmodel)
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.kotlinx.io.core)
+            implementation(libs.ktor.client.core)
             implementation(libs.arrow.core)
             implementation(libs.arrow.fx.coroutines)
             implementation(libs.androidx.lifecycle.viewmodel)
         }
         androidMain.dependencies {
             implementation(libs.koin.android)
+            implementation(libs.ktor.client.okhttp)
+        }
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
