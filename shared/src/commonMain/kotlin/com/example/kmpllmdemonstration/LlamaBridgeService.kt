@@ -6,8 +6,10 @@ import arrow.core.rightIor
 import com.llamatik.library.platform.GenStream
 import com.llamatik.library.platform.LlamaBridge
 import com.llamatik.library.platform.LlamaSession
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlin.concurrent.Volatile
 
@@ -45,6 +47,8 @@ class LlamaBridgeService {
         activeSession?.cancel()
     }
 
+    // callbackFlow デフォルト容量(64)を超える速度でトークンが来た場合の取りこぼし防止に
+    // UNLIMITED バッファを付与
     fun generateText(prompt: String): Flow<Ior<GenerateTextInterruptedException, GenTextState>> = callbackFlow {
         val session = LlamaBridge.createSession(name = "generate")
             ?: run {
@@ -55,7 +59,6 @@ class LlamaBridgeService {
 
         activeSession = session
         val textBuffer = StringBuilder()
-        trySend(GenTextState.OnProgress("").rightIor())
 
         session.stream(
             prompt = prompt,
@@ -83,10 +86,10 @@ class LlamaBridgeService {
             session.close()
             activeSession = null
         }
-    }
+    }.buffer(Channel.UNLIMITED)
 }
 
-data class GenerateTextInterruptedException(override val message: String) : Exception()
+class GenerateTextInterruptedException(override val message: String) : Exception(message)
 
 sealed class GenTextState(open val value: String) {
     data class OnProgress(override val value: String) : GenTextState(value = value)
