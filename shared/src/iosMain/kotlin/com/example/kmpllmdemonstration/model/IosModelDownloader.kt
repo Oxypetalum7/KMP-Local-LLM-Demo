@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileSize
+import platform.Foundation.NSHTTPURLResponse
 import platform.Foundation.NSNumber
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLSession
@@ -31,12 +32,19 @@ class IosModelDownloader : ModelDownloader {
         // 前回の中断ファイルを削除
         NSFileManager.defaultManager.removeItemAtPath("$destinationPath.tmp", null)
 
-        // InProgress(0, 0) でダウンロード開始を通知（iOS は NSURLSessionDownloadDelegate なしでは中間進捗不可）
+        // ダウンロード開始通知（iOS は NSURLSessionDownloadDelegate なしでは中間進捗不可のため total=0）
         trySend(DownloadProgress.InProgress(0L, 0L))
 
-        val task = NSURLSession.sharedSession.downloadTaskWithURL(nsUrl) { tmpUrl, _, error ->
+        val task = NSURLSession.sharedSession.downloadTaskWithURL(nsUrl) { tmpUrl, response, error ->
             if (error != null) {
                 trySend(DownloadProgress.Failure(error.localizedDescription))
+                close()
+                return@downloadTaskWithURL
+            }
+            // HTTP ステータスコード確認
+            val statusCode = (response as? NSHTTPURLResponse)?.statusCode?.toInt() ?: -1
+            if (statusCode !in 200..299) {
+                trySend(DownloadProgress.Failure("HTTP $statusCode"))
                 close()
                 return@downloadTaskWithURL
             }

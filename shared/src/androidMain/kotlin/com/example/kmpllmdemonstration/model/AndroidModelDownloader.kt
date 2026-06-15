@@ -19,12 +19,17 @@ class AndroidModelDownloader : ModelDownloader {
 
         val connection = URL(url).openConnection() as HttpURLConnection
         connection.instanceFollowRedirects = true
-        connection.connect()
-
-        val totalBytes = connection.contentLengthLong
         val tempFile = File("$destinationPath.tmp")
 
         try {
+            connection.connect()
+            val code = connection.responseCode
+            if (code !in 200..299) {
+                emit(DownloadProgress.Failure("HTTP $code: ${connection.responseMessage ?: "サーバーエラー"}"))
+                return@flow
+            }
+
+            val totalBytes = connection.contentLengthLong
             connection.inputStream.use { input ->
                 FileOutputStream(tempFile).use { output ->
                     val buffer = ByteArray(8 * 1024)
@@ -37,7 +42,12 @@ class AndroidModelDownloader : ModelDownloader {
                     }
                 }
             }
-            tempFile.renameTo(destFile)
+
+            if (!tempFile.renameTo(destFile)) {
+                tempFile.delete()
+                emit(DownloadProgress.Failure("一時ファイルの移動に失敗しました"))
+                return@flow
+            }
             emit(DownloadProgress.Complete)
         } catch (e: Exception) {
             tempFile.delete()
