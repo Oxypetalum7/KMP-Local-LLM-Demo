@@ -11,38 +11,41 @@ import com.example.kmpllmdemonstration.model.DownloadProgress
 import com.example.kmpllmdemonstration.model.LlamaModel
 import com.example.kmpllmdemonstration.model.ModelDownloader
 import com.example.kmpllmdemonstration.model.ModelFileProvider
-import com.example.kmpllmdemonstration.model.ModelState
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@OptIn(ExperimentalUuidApi::class)
 class MainViewModel(
     private val llamaBridgeService: LlamaBridgeService,
     private val modelFileProvider: ModelFileProvider,
     private val modelDownloader: ModelDownloader,
 ) : ViewModel() {
 
-    private val _modelState = MutableStateFlow<ModelState>(ModelState.Idle)
-    val modelState: StateFlow<ModelState> = _modelState.asStateFlow()
+    private val _state = MutableStateFlow(ChatUiState())
+    val state: StateFlow<ChatUiState> = _state.asStateFlow()
 
-    private val _generatedText = MutableStateFlow("")
-    val generatedText: StateFlow<String> = _generatedText.asStateFlow()
-
-    private val _gpuEnabled = MutableStateFlow(false)
-    val gpuEnabled: StateFlow<Boolean> = _gpuEnabled.asStateFlow()
-
-    private val _isGenerating = MutableStateFlow(false)
-    val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
+    private val _effects = MutableSharedFlow<Effect>(
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val effects: SharedFlow<Effect> = _effects.asSharedFlow()
 
     private var generateJob: Option<Job> = none()
 
     init {
-        // アプリ再起動後にキャッシュ済みモデルを自動検出してロードする
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.Default) {
             val model = LlamaModel.all.firstOrNull() ?: return@launch
             if (modelFileProvider.exists(model.fileName)) {
                 initModel(model, modelFileProvider.getFilePath(model.fileName))
@@ -50,14 +53,78 @@ class MainViewModel(
         }
     }
 
-    fun toggleGpu(enabled: Boolean) {
-        _gpuEnabled.value = enabled
+    fun dispatch(intent: Intent) {
+        when (intent) {
+            is Intent.Main.UpdateInput -> _state.update { it.copy(input = intent.text) }
+            Intent.Main.Send -> onSend()
+            Intent.Main.LogoTapped -> onLogoTapped()
+            is Intent.Main.TogglePromptCollapse -> onTogglePromptCollapse(intent.turnId)
+            Intent.Main.StartNewChat -> onStartNewChat()
+            Intent.Main.ToggleSidebar -> _state.update { it.copy(isSidebarOpen = !it.isSidebarOpen) }
+            Intent.Main.DismissError -> onDismissError()
+            is Intent.Setting.ToggleGpu -> onToggleGpu(intent.enabled)
+        }
+    }
+
+    private fun onLogoTapped() {
+        if (!_state.value.isLogoTappable) return
+        downloadAndInit(LlamaModel.Gemma4E4BQ2)
+    }
+
+    private fun onSend() {
+        val current = _state.value
+        if (!current.isSendVisible) return
+        val prompt = current.input.trim()
+        val turnId = generateTurnId()
+        _state.update {
+            it.copy(
+                input = "",
+                turns = it.turns + ChatTurn(
+                    id = turnId,
+                    prompt = prompt,
+                    response = ResponseState.Generating(""),
+                ),
+            )
+        }
+        generate(prompt, turnId)
+    }
+
+    private fun onTogglePromptCollapse(turnId: String) {
+        _state.update { state ->
+            state.copy(
+                turns = state.turns.map { t ->
+                    if (t.id == turnId) t.copy(isPromptCollapsed = !t.isPromptCollapsed) else t
+                },
+            )
+        }
+    }
+
+    private fun onStartNewChat() {
+        viewModelScope.launch {
+            generateJob.onSome { job ->
+                llamaBridgeService.cancelGenerate()
+                job.join()
+            }
+            _state.update { it.copy(input = "", turns = emptyList(), isSidebarOpen = false) }
+        }
+    }
+
+    private fun onToggleGpu(enabled: Boolean) {
+        _state.update { it.copy(gpuEnabled = enabled) }
         viewModelScope.launch(Dispatchers.Default) {
             llamaBridgeService.updateParams(gpuEnabled = enabled)
         }
     }
 
-    fun downloadAndInit(model: LlamaModel) {
+    private fun onDismissError() {
+        _state.update { state ->
+            val newModel =
+                if (state.model is ModelStatus.Failed) ModelStatus.NotInitialized else state.model
+            state.copy(model = newModel)
+        }
+    }
+
+    private fun downloadAndInit(model: LlamaModel) {
         viewModelScope.launch {
             val path = modelFileProvider.getFilePath(model.fileName)
             modelDownloader.download(model.downloadUrl, path).collect { progress ->
@@ -66,62 +133,87 @@ class MainViewModel(
                         val pct = if (progress.total > 0)
                             (progress.downloaded * 100L / progress.total).toInt()
                         else 0
-                        _modelState.value = ModelState.Downloading(pct)
+                        _state.update { it.copy(model = ModelStatus.Downloading(pct)) }
                     }
-                    DownloadProgress.Complete -> initModel(model, path)
-                    DownloadProgress.Cached -> initModel(model, path)
-                    is DownloadProgress.Failure -> _modelState.value =
-                        ModelState.Error(progress.message)
+                    DownloadProgress.Complete, DownloadProgress.Cached -> initModel(model, path)
+                    is DownloadProgress.Failure -> {
+                        _state.update { it.copy(model = ModelStatus.Failed(progress.message)) }
+                        _effects.tryEmit(Effect.Main.ShowError(progress.message))
+                    }
                 }
             }
         }
     }
 
     private suspend fun initModel(model: LlamaModel, path: String) {
-        _modelState.value = ModelState.Initializing
+        _state.update { it.copy(model = ModelStatus.Initializing) }
         withContext(Dispatchers.Default) {
             val ok = llamaBridgeService.initModel(path)
             if (ok) {
-                llamaBridgeService.updateParams(gpuEnabled = _gpuEnabled.value)
-                _modelState.value = ModelState.Ready(model)
+                llamaBridgeService.updateParams(gpuEnabled = _state.value.gpuEnabled)
+                _state.update { it.copy(model = ModelStatus.Ready) }
             } else {
-                _modelState.value = ModelState.Error("モデルの初期化に失敗しました")
+                val msg = "モデルの初期化に失敗しました"
+                _state.update { it.copy(model = ModelStatus.Failed(msg)) }
+                _effects.tryEmit(Effect.Main.ShowError(msg))
             }
         }
     }
 
-    fun generate(prompt: String) {
-        val currentModel = (_modelState.value as? ModelState.Ready)?.model ?: return
+    private fun generate(prompt: String, turnId: String) {
         viewModelScope.launch {
-            // ネイティブセッションを止めてから前の Job が完全に終わるまで待つ
             generateJob.onSome { job ->
                 llamaBridgeService.cancelGenerate()
                 job.join()
             }
 
-            // キャンセル由来のエラー状態をリセット
-            _modelState.value = ModelState.Ready(currentModel)
-            _generatedText.value = ""
-            _isGenerating.value = true
-
             generateJob = launch {
                 try {
                     withContext(Dispatchers.Default) {
                         llamaBridgeService.generateText(prompt).collect { result ->
-                            // Ior の Left/Right/Both すべてで same handling
                             result.leftOrNull()?.let { error ->
-                                _modelState.value = ModelState.Error(error.message)
+                                val msg = error.message
+                                _state.update { state ->
+                                    state.copy(
+                                        turns = state.turns.map { t ->
+                                            if (t.id == turnId) {
+                                                t.copy(response = ResponseState.Failed(msg))
+                                            } else t
+                                        },
+                                    )
+                                }
+                                _effects.tryEmit(Effect.Main.ShowError(msg))
                             }
-                            result.getOrNull()?.let { state ->
-                                _generatedText.value = state.value
+                            result.getOrNull()?.let { gen ->
+                                val nextResponse = when (gen) {
+                                    is GenTextState.OnProgress -> ResponseState.Generating(gen.value)
+                                    is GenTextState.Complete -> ResponseState.Completed(gen.value)
+                                }
+                                _state.update { state ->
+                                    state.copy(
+                                        turns = state.turns.map { t ->
+                                            if (t.id == turnId) t.copy(response = nextResponse) else t
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
                 } finally {
-                    // 正常完了・キャンセル・例外いずれの場合も生成中フラグを下ろす
-                    _isGenerating.value = false
+                    _state.update { state ->
+                        state.copy(
+                            turns = state.turns.map { t ->
+                                val r = t.response
+                                if (t.id == turnId && r is ResponseState.Generating) {
+                                    t.copy(response = ResponseState.Completed(r.partial))
+                                } else t
+                            },
+                        )
+                    }
                 }
             }.some()
         }
     }
+
+    private fun generateTurnId(): String = Uuid.random().toString()
 }
