@@ -31,7 +31,7 @@ final class ChatViewModelBridge {
         Task { @MainActor [weak self] in
             guard let self else { return }
             for await effect in self.viewModel.effects {
-                if let showError = effect as? Effect.Main.ShowError {
+                if let showError = effect as? EffectMainShowError {
                     self.pendingError = showError.message
                 }
             }
@@ -44,6 +44,6 @@ final class ChatViewModelBridge {
 
     func clearError() {
         pendingError = nil
-        dispatch(Intent.Main.DismissError.shared)
+        dispatch(IntentMainDismissError.shared)
     }
 }

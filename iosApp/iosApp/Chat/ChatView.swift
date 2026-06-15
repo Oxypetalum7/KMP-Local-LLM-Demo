@@ -11,9 +11,9 @@ struct ChatView: View {
             AppHeader(
                 state: bridge.state,
                 onMenuTapped: { showSidebar = true },
-                onLogoTapped: { bridge.dispatch(Intent.Main.LogoTapped.shared) },
+                onLogoTapped: { bridge.dispatch(IntentMainLogoTapped.shared) },
                 onNewChatTapped: {
-                    bridge.dispatch(Intent.Main.StartNewChat.shared)
+                    bridge.dispatch(IntentMainStartNewChat.shared)
                     inputDraft = ""
                 }
             )
@@ -29,7 +29,7 @@ struct ChatView: View {
         .sheet(isPresented: $showSidebar) {
             ChatSidebar(
                 gpuEnabled: bridge.state.gpuEnabled,
-                onToggleGpu: { bridge.dispatch(Intent.Setting.ToggleGpu(enabled: $0)) }
+                onToggleGpu: { bridge.dispatch(IntentSettingToggleGpu(enabled: $0)) }
             )
             .presentationDetents([.medium, .large])
         }
@@ -43,7 +43,7 @@ struct ChatView: View {
             message: { Text(bridge.pendingError ?? "") }
         )
         .onChange(of: inputDraft) { _, new in
-            bridge.dispatch(Intent.Main.UpdateInput(text: new))
+            bridge.dispatch(IntentMainUpdateInput(text: new))
         }
         .onChange(of: bridge.state.input) { _, new in
             if new != inputDraft { inputDraft = new }
@@ -65,7 +65,7 @@ private struct ChatBody: View {
                                 turn: turn,
                                 showDivider: index < bridge.state.turns.count - 1,
                                 onTogglePromptCollapse: {
-                                    bridge.dispatch(Intent.Main.TogglePromptCollapse(turnId: turn.id))
+                                    bridge.dispatch(IntentMainTogglePromptCollapse(turnId: turn.id))
                                 }
                             )
                             .id(turn.id)
@@ -103,14 +103,14 @@ private struct ChatBody: View {
                 input: $inputDraft,
                 enabled: bridge.state.isInputEnabled,
                 isSendVisible: bridge.state.isSendVisible,
-                onSend: { bridge.dispatch(Intent.Main.Send.shared) }
+                onSend: { bridge.dispatch(IntentMainSend.shared) }
             )
         }
     }
 
     private var lastPartial: String {
         guard let last = bridge.state.turns.last else { return "" }
-        if let g = last.response as? ResponseState.Generating { return g.partial }
+        if let g = last.response as? ResponseStateGenerating { return g.partial }
         return ""
     }
 }

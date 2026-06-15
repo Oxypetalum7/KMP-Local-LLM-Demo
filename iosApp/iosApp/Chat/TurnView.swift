@@ -27,8 +27,8 @@ struct TurnView: View {
 
     @ViewBuilder
     private var responseView: some View {
-        switch turn.response {
-        case let g as ResponseState.Generating:
+        switch onEnum(of: turn.response) {
+        case .generating(let g):
             VStack(alignment: .leading, spacing: 8) {
                 if !g.partial.isEmpty {
                     Text(g.partial)
@@ -40,18 +40,16 @@ struct TurnView: View {
                     .progressViewStyle(.circular)
                     .tint(.white.opacity(0.7))
             }
-        case let c as ResponseState.Completed:
+        case .completed(let c):
             Text(c.text)
                 .font(.body)
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, alignment: .leading)
-        case let f as ResponseState.Failed:
+        case .failed(let f):
             Text("応答エラー: \(f.message)")
                 .font(.body)
                 .foregroundStyle(.red)
                 .frame(maxWidth: .infinity, alignment: .leading)
-        default:
-            EmptyView()
         }
     }
 }
