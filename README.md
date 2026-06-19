@@ -18,47 +18,73 @@
 
 本プロジェクトは **MVI（Model-View-Intent）パターン** を採用し、単方向のデータフローで状態変更と副作用を管理します。
 
-```
-┌──────────────────────────────┐
-│  ユーザーインタラクション      │
-│   (UI → Intent送信)           │
-└────────────┬─────────────────┘
-             ↓
-┌──────────────────────────────┐
-│  MainViewModel (MVI中枢)      │
-│  • Intent処理                 │
-│  • State & Effect 発行        │
-└────────────┬─────────────────┘
-             ↓
-    ┌────────┴────────┐
-    ↓                 ↓
-┌─────────────┐  ┌────────────┐
-│ ChatUiState │  │  Effects   │
-│(StateFlow)  │  │(エラー通知) │
-└─────────────┘  └────────────┘
-    ↓                 ↓
-   Android UI / iOS UI (監視・反応)
+### MVI パターン（データフロー）
+
+```mermaid
+graph TD
+    A["👤 ユーザーインタラクション<br/>(タップ・入力)"] -->|Intent送信| B["📱 MainViewModel<br/>(MVI中枢)<br/>───────────────<br/>• Intent処理<br/>• State更新<br/>• Effect発行"]
+    B -->|State発行| C["💾 ChatUiState<br/>(StateFlow)<br/>───────────────<br/>• モデルステータス<br/>• チャット履歴<br/>• UI フラグ"]
+    B -->|Effect発行| D["⚠️ Effects<br/>───────────────<br/>• エラー通知<br/>• その他副作用"]
+    C -->|監視・反応| E["🎨 Android UI<br/>(Compose)"]
+    C -->|監視・反応| F["🍎 iOS UI<br/>(SwiftUI)"]
+    D -->|監視| E
+    D -->|監視| F
+    E -->|ユーザー操作| A
+    F -->|ユーザー操作| A
 ```
 
-### 状態管理の仕組み
-- **ChatUiState**：UI の単一の情報源
-  - モデルステータス（未初期化 → ダウンロード中 → 初期化中 → 準備完了）
-  - チャットターン（ユーザー入力 + AI 応答）
-  - UI フラグ（入力有効状態、サイドバー展開など）
+**MVI パターンの特徴：**
+- **Model**：`ChatUiState` が UI の単一の情報源
+- **View**：`Compose` (Android) / `SwiftUI` (iOS) が State を監視
+- **Intent**：ユーザー操作を明示的にクラス化（メッセージ送信、GPU 切り替えなど）
 
-- **Intent**：ユーザーの操作（メッセージ送信、GPU 切り替え、新規チャット開始など）
+### レイヤー構成（全体アーキテクチャ）
 
-- **Effect**：副作用（エラー通知など）
+```mermaid
+graph TD
+    subgraph Presentation["🎨 プレゼンテーション層"]
+        Android["Android<br/>Compose"]
+        iOS["iOS<br/>SwiftUI"]
+    end
+    
+    subgraph BusinessLogic["📱 ビジネスロジック層"]
+        MVM["MainViewModel<br/>(MVI中枢)"]
+        State["ChatUiState<br/>(状態)"]
+        Intent["Intent<br/>(ユーザー操作)"]
+        Effect["Effect<br/>(副作用)"]
+    end
+    
+    subgraph ServiceModel["⚙️ サービス・モデル層"]
+        LBS["LlamaBridgeService<br/>(LLM推論)"]
+        MD["ModelDownloader<br/>(モデル管理)"]
+        MFP["ModelFileProvider<br/>(ファイル管理)"]
+    end
+    
+    subgraph PlatformLayer["🔌 プラットフォーム層"]
+        Llamatik["Llamatik<br/>(ローカルLLM)"]
+        Ktor["Ktor Client<br/>(ネットワーク)"]
+        FileIO["File I/O<br/>(ローカルストレージ)"]
+    end
+    
+    Android -->|State購読<br/>Intent発火| MVM
+    iOS -->|State購読<br/>Intent発火| MVM
+    MVM --> State
+    MVM --> Effect
+    MVM -->|呼び出し| LBS
+    MVM -->|呼び出し| MD
+    LBS -->|推論実行| Llamatik
+    MD -->|ダウンロード| Ktor
+    MFP -->|ファイル操作| FileIO
+```
 
-### レイヤー別構成
+**各レイヤーの役割：**
 
-| レイヤー | 役割 | 使用技術 |
-|---------|------|--------|
-| **プレゼンテーション** | プラットフォーム固有の UI・イベント処理 | Compose (Android)、SwiftUI (iOS) |
-| **ViewModel** | 状態マシン、ビジネスロジック統合 | `androidx.lifecycle.ViewModel`、Coroutines |
-| **サービス層** | LLM推論の抽象化、テキスト生成 | `LlamaBridgeService` |
-| **モデル層** | モデル管理、ダウンロード、ファイルI/O | `ModelDownloader`、`ModelFileProvider` |
-| **プラットフォーム層** | ネイティブコード連携 | Llamatik (JVM/Native相互運用) |
+| レイヤー | 責務 | 主要クラス |
+|---------|------|----------|
+| **プレゼンテーション** | UI レンダリング、イベント処理 | `MainScreen.kt` (Compose)、`MainViewModel.swift` (SwiftUI) |
+| **ビジネスロジック** | 状態管理、データフロー制御 | `MainViewModel`、`ChatUiState`、`Intent`、`Effect` |
+| **サービス・モデル** | ドメインロジック、外部連携 | `LlamaBridgeService`、`ModelDownloader`、`ModelFileProvider` |
+| **プラットフォーム** | ネイティブ API、OS依存処理 | `Llamatik`、`Ktor`、`FileI/O` |
 
 ## 技術スタック
 
