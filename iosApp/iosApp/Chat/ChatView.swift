@@ -85,12 +85,12 @@ private struct ChatBody: View {
                         endPoint: .bottom
                     )
                 )
-                .onTapGesture {
+                .simultaneousGesture(TapGesture().onEnded {
                     UIApplication.shared.sendAction(
                         #selector(UIResponder.resignFirstResponder),
                         to: nil, from: nil, for: nil
                     )
-                }
+                })
                 .onChange(of: bridge.state.turns.count) { _, _ in
                     if let last = bridge.state.turns.last {
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
