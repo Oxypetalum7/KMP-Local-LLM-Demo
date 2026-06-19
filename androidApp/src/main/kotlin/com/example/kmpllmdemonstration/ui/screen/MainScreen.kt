@@ -1,5 +1,6 @@
 package com.example.kmpllmdemonstration.ui.screen
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,6 +25,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.kmpllmdemonstration.ui.component.AppHeader
@@ -112,6 +115,7 @@ private fun ChatBody(
     onTogglePromptCollapse: (String) -> Unit,
 ) {
     val listState = rememberLazyListState()
+    val focusManager = LocalFocusManager.current
     val lastTurnId = state.turns.lastOrNull()?.id
     val lastResponse = (state.turns.lastOrNull()?.response as? ResponseState.Generating)?.partial
 
@@ -135,7 +139,10 @@ private fun ChatBody(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .pointerInput(Unit) {
+                    detectTapGestures { focusManager.clearFocus() }
+                },
         ) {
             LazyColumn(
                 state = listState,
