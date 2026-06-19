@@ -284,7 +284,6 @@ llamaBridgeService.generateText(prompt).collect { result ->
 
 このプロジェクトの細部には、多くの UX 設計判断が埋め込まれています：
 
-- **コード** で実装を理解することも大切です。
 - **実際に触って、使って、感じてみて下さい。**
 
 ## 将来の拡張予定
