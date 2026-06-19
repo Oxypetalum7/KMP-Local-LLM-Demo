@@ -222,7 +222,9 @@ llamaBridgeService.generateText(prompt).collect { result ->
 - [Arrow Documentation](https://arrow-kt.io/)
 
 ## ライセンス
-MIT License - LICENSE ファイルを参照してください
+Apache License 2.0 - [LICENSE](./LICENSE) ファイルを参照してください
+
+このプロジェクトは、すべての依存ライブラリが Apache 2.0 でライセンスされています。
 
 ## お問い合わせ
 このプロジェクトに関するご質問は、GitHub の Issue でお気軽にお問い合わせください。
