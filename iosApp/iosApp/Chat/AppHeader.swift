@@ -55,8 +55,10 @@ private struct LogoButton: View {
                         .tint(.white)
                         .frame(width: 44, height: 44)
                 }
-                Text("🐺")
-                    .font(.system(size: 24))
+                Image("WolfLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 40, height: 40)
                     .opacity(state.isReady ? 1.0 : 0.4)
             }
             .frame(width: 48, height: 48)
