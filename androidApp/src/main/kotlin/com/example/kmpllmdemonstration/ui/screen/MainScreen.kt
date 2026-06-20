@@ -152,7 +152,7 @@ private fun ChatBody(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .fadingEdgeBottom(),
+                    .fadingEdgeBottom(MaterialTheme.colorScheme.background),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 itemsIndexed(state.turns, key = { _, t -> t.id }) { index, turn ->

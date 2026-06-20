@@ -1,22 +1,30 @@
 package com.example.kmpllmdemonstration.ui.util
 
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.graphicsLayer
 
-fun Modifier.fadingEdgeBottom(fractionStart: Float = 0.88f): Modifier = this
-    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-    .drawWithContent {
+/**
+ * 下端を [color]（＝背景色）へフェードさせる。
+ *
+ * オフスクリーン合成（CompositingStrategy.Offscreen + BlendMode.DstIn）は使わず、
+ * 背景色への不透明グラデーションを上から重ねるだけにしている。
+ * これにより IME アニメ等でサイズが毎フレーム変化してもオフスクリーン層の
+ * 再確保が発生せず、アニメーションが滑らかになる。背景が単色のため見た目は等価。
+ */
+fun Modifier.fadingEdgeBottom(
+    color: Color,
+    fractionStart: Float = 0.88f,
+): Modifier = this.drawWithCache {
+    val brush = Brush.verticalGradient(
+        fractionStart to Color.Transparent,
+        1f to color,
+        startY = 0f,
+        endY = size.height,
+    )
+    onDrawWithContent {
         drawContent()
-        drawRect(
-            brush = Brush.verticalGradient(
-                fractionStart to Color.Black,
-                1f to Color.Transparent,
-            ),
-            blendMode = BlendMode.DstIn,
-        )
+        drawRect(brush = brush)
     }
+}
